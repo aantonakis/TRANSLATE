@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <assert.h>
 #include <random>
+#include <cstdint>
+#include <string>
 #include <vector>
 #include <utility>
 
@@ -251,6 +253,7 @@ private:
 	      return excite_xsec_15[idx];
             default:
                 assert(false);
+                return 0.0;
         }
     }
 
@@ -279,6 +282,10 @@ public:
   void update(std::vector<Electron*>& electron_list, int& total_ionizations);
 };
 
-void generate_plot(int volts, double elec_energy, double cutoff, int cores, int write_every, int k, int batches, int debug, int status, ProgressBar& bar);
+void generate_plot(int volts, double elec_energy, double cutoff, int cores,
+                   int write_every, int k, int batches, int debug, int status,
+                   std::uint64_t base_seed, int job_index,
+                   const std::string& output_dir,
+                   const std::string& output_prefix, ProgressBar& bar);
 
 #endif

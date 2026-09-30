@@ -1,5 +1,7 @@
 .DS_Store
 build/
+grid/submissions/
+output/
 py/preprocessing/.ipynb_checkpoints/
 py/
 !py/*.ipynb

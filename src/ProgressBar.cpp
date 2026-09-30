@@ -25,6 +25,7 @@ ProgressBar::ProgressBar(int threads):
  */
 void ProgressBar::update(double prog, int thread)
 {
+    std::lock_guard<std::mutex> lock(mutex);
     if (prog > progress[thread])
         progress[thread] = prog;
 }
@@ -37,6 +38,7 @@ void ProgressBar::update(double prog, int thread)
  */
 void ProgressBar::new_file(int file, int thread)
 {
+    std::lock_guard<std::mutex> lock(mutex);
     file_number[thread] = file;
     progress[thread] = 0;
 }
@@ -46,6 +48,7 @@ void ProgressBar::new_file(int file, int thread)
  */
 void ProgressBar::display() const
 {
+    std::lock_guard<std::mutex> lock(mutex);
     std::cout << "\r";
     for (int k = 0; k < num_threads; k++)
         std::cout << "File " << file_number[k] << ": " << progress[k] * 100 << "%   ";
@@ -61,6 +64,7 @@ void ProgressBar::display() const
  */
 bool ProgressBar::min_prog(int thread) const
 {
+    std::lock_guard<std::mutex> lock(mutex);
     for (int k = 0; k < num_threads; k++)
         if (progress[thread] > progress[k])
             return false;

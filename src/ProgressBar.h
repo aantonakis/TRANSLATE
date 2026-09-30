@@ -2,6 +2,7 @@
 #define PROGRESSBAR_H
 
 #include <vector>
+#include <mutex>
 
 class ProgressBar
 {
@@ -9,6 +10,7 @@ private:
     int num_threads;
     std::vector<double> progress;
     std::vector<int> file_number;
+    mutable std::mutex mutex;
 public:
     ProgressBar(int threads);
 

@@ -3,6 +3,7 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <cstdint>
 
 #include "Electron.h"
 
@@ -906,13 +907,25 @@ void Electron::update(std::vector<Electron*> &electron_list, int& total_ionizati
  * @param batches The number of batches to be generated
  * @param bar The progress bar to be used
  */
-void generate_plot(int volts, double elec_energy, double cutoff, int cores, int write_every, int k, int batches, int debug, int status, ProgressBar& bar) {
+void generate_plot(int volts, double elec_energy, double cutoff, int cores,
+                   int write_every, int k, int batches, int debug, int status,
+                   std::uint64_t base_seed, int job_index,
+                   const std::string& output_dir,
+                   const std::string& output_prefix, ProgressBar& bar) {
   
   for (int i = 0; i < batches; i++) {
     
     // Setup a progress bar and create the random number generator for the thread
     bar.new_file(cores * i + (k + 1), k);
-    std::mt19937 generator(std::chrono::system_clock::now().time_since_epoch().count());
+    const std::uint64_t seed = base_seed
+        + static_cast<std::uint64_t>(job_index + 1) * 1000003ULL
+        + static_cast<std::uint64_t>(volts) * 1009ULL
+        + static_cast<std::uint64_t>(cores * i + k) * 9176ULL;
+    std::seed_seq seed_sequence{
+        static_cast<std::uint32_t>(seed),
+        static_cast<std::uint32_t>(seed >> 32)
+    };
+    std::mt19937 generator(seed_sequence);
     
     // Setup the array of electrons to be simulated
     std::vector<Electron*> electron_list;
@@ -920,8 +933,16 @@ void generate_plot(int volts, double elec_energy, double cutoff, int cores, int 
     electron_list.push_back(new Electron(0, volts, starting_pos(generator), random_unit_vector(generator) * eV_to_v(elec_energy), generator, debug, status));
     
     // Open the file to write to
-    std::ofstream file("../py/simulation-runs/"
-		       + std::to_string(volts) + "V_" + std::to_string(cores * i + (k + 1)) + ".txt");
+    std::string filename;
+    if (output_prefix.empty() && job_index < 0) {
+      filename = std::to_string(volts) + "V_"
+          + std::to_string(cores * i + (k + 1)) + ".txt";
+    } else {
+      filename = output_prefix + std::to_string(volts) + "V_job"
+          + std::to_string(job_index) + "_batch"
+          + std::to_string(cores * i + (k + 1)) + ".txt";
+    }
+    std::ofstream file(output_dir + "/" + filename);
     assert(file.is_open());
     
     // Grab initial conditions
@@ -1032,4 +1053,3 @@ void generate_plot(int volts, double elec_energy, double cutoff, int cores, int 
   
   return;
 }
-

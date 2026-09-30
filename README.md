@@ -39,6 +39,55 @@ make
 ### Setup
 To run the code type `./larcade` and follow the prompts. To change running configuration edit the `srcs/Constants.h` file and specifically update the value of `n`, the density of argon atoms, `is_diff` and `is_gas` to choose the simulation mode.
 
+The executable also supports a noninteractive configuration mode:
+
+```bash
+./build/LArCADe --config configs/grid_example.conf
+```
+
+Configuration files use `key = value` entries. Required keys are
+`fields_v_cm`, `electron_energy_ev`, `cutoff_s`, `write_every`, `batches`, and
+`seed`. Optional keys are `cores`, `output_dir`, `output_prefix`, `debug`, and
+`status`. See `configs/grid_example.conf` for a complete example. Command-line
+options can override the output directory, output prefix, seed, and job index;
+run `./build/LArCADe --help` for details.
+
+The seed is deterministic in configuration mode. Each electric field, batch,
+thread, and `--job-index` receives a separate derived random-number stream.
+
+### Fermilab grid submission
+
+Run the submission command on a Fermilab host with `jobsub_submit` and valid
+token credentials:
+
+```bash
+python3 grid/submit_jobs.py \
+  --config configs/grid_example.conf \
+  --jobs 100 \
+  --output-prefix translate_test \
+  --group sbnd
+```
+
+Each job uses `$PROCESS` as its job index, compiles an optimized build in worker
+scratch space, runs an independent deterministic replica, and copies a `.tar.gz`
+result archive plus its log to PNFS using IFDH. The worker uses CMake when it is
+available and otherwise builds directly with the system C++17 compiler. By
+default output goes to
+`/pnfs/<group>/scratch/users/$USER/translate/<run-name>`. Set
+`TRANSLATE_GRID_OUT_DIR` or pass `--output-dir` to choose another destination.
+The output directory must be writable with the submitted token. The current
+submission requests 100 GB of worker disk and a ten-hour lifetime.
+
+Before submitting, the payload and exact command can be inspected locally:
+
+```bash
+python3 grid/submit_jobs.py \
+  --config configs/grid_example.conf \
+  --jobs 2 \
+  --output-prefix translate_test \
+  --dry-run
+```
+
 Configurable constants:
 
 ```
