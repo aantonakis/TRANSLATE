@@ -77,7 +77,10 @@ def main():
         "--lines", "+FERMIHTC_AutoRelease=True",
         "--lines", "+FERMIHTC_GraceMemory=3000",
         "--lines", "+FERMIHTC_GraceLifetime=3600",
-        "--append_condor_requirements=(TARGET.HAS_SINGULARITY=?=true)",
+        "--append_condor_requirements="
+        "(TARGET.HAS_SINGULARITY=?=true"
+        "&&TARGET.HAS_CVMFS_sbnd_opensciencegrid_org=?=true"
+        "&&TARGET.HAS_CVMFS_larsoft_opensciencegrid_org=?=true)",
         f"--tar_file_name=dropbox://{tar_path}",
         "-N", str(args.jobs), "--disk", "100GB",
         "--expected-lifetime", args.expected_lifetime,

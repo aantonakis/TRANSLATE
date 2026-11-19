@@ -5,9 +5,11 @@ output_dir=${1:?Usage: run_grid_job.sh OUTPUT_DIR OUTPUT_PREFIX CONFIG_NAME}
 output_prefix=${2:?Usage: run_grid_job.sh OUTPUT_DIR OUTPUT_PREFIX CONFIG_NAME}
 config_name=${3:?Usage: run_grid_job.sh OUTPUT_DIR OUTPUT_PREFIX CONFIG_NAME}
 process=${PROCESS:-0}
+worker_version=3
 
 echo "@@ hostname: $(hostname)"
 echo "@@ process: ${process}"
+echo "@@ TRANSLATE worker version: ${worker_version}"
 echo "@@ output destination: ${output_dir}"
 
 payload=""
@@ -31,9 +33,40 @@ build_dir="${work_dir}/translate_build"
 result_dir="${work_dir}/translate_output"
 mkdir -p "${build_dir}" "${result_dir}"
 
+# Bare worker images do not always expose build tools. Try the SBND UPS setup
+# first, then the Fermilab LArSoft Spack environment. Both attempts are
+# deliberately non-fatal because many worker images already provide a usable
+# compiler even when CMake is absent.
+if ! command -v cmake >/dev/null 2>&1 || \
+   { ! command -v c++ >/dev/null 2>&1 && ! command -v g++ >/dev/null 2>&1; }; then
+    echo "@@ initializing Fermilab CVMFS build environment"
+    set +u
+    if [[ -f /cvmfs/sbnd.opensciencegrid.org/products/sbnd/setup_sbnd.sh ]]; then
+        # shellcheck disable=SC1091
+        source /cvmfs/sbnd.opensciencegrid.org/products/sbnd/setup_sbnd.sh || true
+        if type setup >/dev/null 2>&1; then
+            setup cmake v3_27_4 || setup cmake || true
+        fi
+    fi
+    if [[ -f /cvmfs/larsoft.opensciencegrid.org/spack-v0.22.0-fermi/setup-env.sh ]]; then
+        # shellcheck disable=SC1091
+        source /cvmfs/larsoft.opensciencegrid.org/spack-v0.22.0-fermi/setup-env.sh || true
+        if command -v spack >/dev/null 2>&1; then
+            command -v cmake >/dev/null 2>&1 || \
+                spack load cmake@3.27.4 >/dev/null 2>&1 || \
+                spack load cmake >/dev/null 2>&1 || true
+            if ! command -v c++ >/dev/null 2>&1 && ! command -v g++ >/dev/null 2>&1; then
+                spack load gcc >/dev/null 2>&1 || true
+            fi
+        fi
+    fi
+    set -u
+fi
+
 executable="${build_dir}/LArCADe"
 if command -v cmake >/dev/null 2>&1; then
-    echo "@@ building with cmake"
+    cmake_version=$(cmake --version)
+    echo "@@ building with ${cmake_version%%$'\n'*}"
     cmake -S "${payload}" -B "${build_dir}" -DCMAKE_BUILD_TYPE=Release
     cmake --build "${build_dir}" --parallel "${OMP_NUM_THREADS:-1}"
 else
@@ -44,7 +77,8 @@ else
         compiler=$(command -v g++)
     fi
     if [[ -z "${compiler}" ]]; then
-        echo "Neither cmake nor a C++ compiler is available on this worker" >&2
+        echo "Neither CMake nor a C++ compiler is available after Fermilab CVMFS setup" >&2
+        echo "PATH=${PATH}" >&2
         exit 12
     fi
     echo "@@ cmake unavailable; building directly with ${compiler}"
