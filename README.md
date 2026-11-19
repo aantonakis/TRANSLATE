@@ -72,8 +72,9 @@ Each job uses `$PROCESS` as its job index, compiles an optimized build in worker
 scratch space, runs an independent deterministic replica, and copies a `.tar.gz`
 result archive plus its log to PNFS using IFDH. The worker uses CMake when it is
 available and otherwise builds directly with a C++17 compiler. On minimal
-worker images it first initializes the SBND/LArSoft build tools from CVMFS. By
-default output goes to
+worker images it initializes build and IFDH tools from the LArSoft Spack area
+on CVMFS, with Fermilab UPS retained only as an IFDH fallback. By default output
+goes to
 `/pnfs/<group>/scratch/users/$USER/translate/<run-name>`. Set
 `TRANSLATE_GRID_OUT_DIR` or pass `--output-dir` to choose another destination.
 The output directory must be writable with the submitted token. The current

@@ -5,7 +5,7 @@ output_dir=${1:?Usage: run_grid_job.sh OUTPUT_DIR OUTPUT_PREFIX CONFIG_NAME}
 output_prefix=${2:?Usage: run_grid_job.sh OUTPUT_DIR OUTPUT_PREFIX CONFIG_NAME}
 config_name=${3:?Usage: run_grid_job.sh OUTPUT_DIR OUTPUT_PREFIX CONFIG_NAME}
 process=${PROCESS:-0}
-worker_version=3
+worker_version=4
 
 echo "@@ hostname: $(hostname)"
 echo "@@ process: ${process}"
@@ -33,34 +33,38 @@ build_dir="${work_dir}/translate_build"
 result_dir="${work_dir}/translate_output"
 mkdir -p "${build_dir}" "${result_dir}"
 
-# Bare worker images do not always expose build tools. Try the SBND UPS setup
-# first, then the Fermilab LArSoft Spack environment. Both attempts are
-# deliberately non-fatal because many worker images already provide a usable
-# compiler even when CMake is absent.
-if ! command -v cmake >/dev/null 2>&1 || \
-   { ! command -v c++ >/dev/null 2>&1 && ! command -v g++ >/dev/null 2>&1; }; then
-    echo "@@ initializing Fermilab CVMFS build environment"
+# Fermilab environment scripts are not safe under Bash's `set -u`. Keep this
+# helper non-fatal so workers with system tools do not depend on CVMFS setup.
+setup_larsoft_spack() {
+    command -v spack >/dev/null 2>&1 && return 0
+    local setup_script=/cvmfs/larsoft.opensciencegrid.org/spack-v0.22.0-fermi/setup-env.sh
+    [[ -f "${setup_script}" ]] || return 0
+    echo "@@ initializing LArSoft Spack from CVMFS"
     set +u
-    if [[ -f /cvmfs/sbnd.opensciencegrid.org/products/sbnd/setup_sbnd.sh ]]; then
-        # shellcheck disable=SC1091
-        source /cvmfs/sbnd.opensciencegrid.org/products/sbnd/setup_sbnd.sh || true
-        if type setup >/dev/null 2>&1; then
-            setup cmake v3_27_4 || setup cmake || true
-        fi
-    fi
-    if [[ -f /cvmfs/larsoft.opensciencegrid.org/spack-v0.22.0-fermi/setup-env.sh ]]; then
-        # shellcheck disable=SC1091
-        source /cvmfs/larsoft.opensciencegrid.org/spack-v0.22.0-fermi/setup-env.sh || true
-        if command -v spack >/dev/null 2>&1; then
-            command -v cmake >/dev/null 2>&1 || \
-                spack load cmake@3.27.4 >/dev/null 2>&1 || \
-                spack load cmake >/dev/null 2>&1 || true
-            if ! command -v c++ >/dev/null 2>&1 && ! command -v g++ >/dev/null 2>&1; then
-                spack load gcc >/dev/null 2>&1 || true
-            fi
-        fi
-    fi
+    # shellcheck disable=SC1090
+    source "${setup_script}" || true
     set -u
+}
+
+# CMake is optional. Only initialize CVMFS build tools if the worker does not
+# already expose a compiler suitable for the direct-build fallback.
+if ! command -v c++ >/dev/null 2>&1 && ! command -v g++ >/dev/null 2>&1; then
+    setup_larsoft_spack
+    if command -v spack >/dev/null 2>&1; then
+        spack load gcc >/dev/null 2>&1 || true
+    fi
+fi
+
+compiler=""
+if command -v c++ >/dev/null 2>&1; then
+    compiler=$(command -v c++)
+elif command -v g++ >/dev/null 2>&1; then
+    compiler=$(command -v g++)
+fi
+if [[ -z "${compiler}" ]]; then
+    echo "No C++ compiler is available after Fermilab CVMFS setup" >&2
+    echo "PATH=${PATH}" >&2
+    exit 12
 fi
 
 executable="${build_dir}/LArCADe"
@@ -70,17 +74,6 @@ if command -v cmake >/dev/null 2>&1; then
     cmake -S "${payload}" -B "${build_dir}" -DCMAKE_BUILD_TYPE=Release
     cmake --build "${build_dir}" --parallel "${OMP_NUM_THREADS:-1}"
 else
-    compiler=""
-    if command -v c++ >/dev/null 2>&1; then
-        compiler=$(command -v c++)
-    elif command -v g++ >/dev/null 2>&1; then
-        compiler=$(command -v g++)
-    fi
-    if [[ -z "${compiler}" ]]; then
-        echo "Neither CMake nor a C++ compiler is available after Fermilab CVMFS setup" >&2
-        echo "PATH=${PATH}" >&2
-        exit 12
-    fi
     echo "@@ cmake unavailable; building directly with ${compiler}"
     "${compiler}" -std=c++17 -O3 -pthread \
         "${payload}/src/main.cpp" \
@@ -104,10 +97,23 @@ archive="${work_dir}/${output_prefix}_job${process}.tar.gz"
 tar -czf "${archive}" -C "${result_dir}" .
 
 if ! command -v ifdh >/dev/null 2>&1; then
-    if [[ -f /cvmfs/fermilab.opensciencegrid.org/products/common/etc/setups.sh ]]; then
-        # shellcheck disable=SC1091
-        source /cvmfs/fermilab.opensciencegrid.org/products/common/etc/setups.sh
-        setup ifdhc
+    setup_larsoft_spack
+    if command -v spack >/dev/null 2>&1; then
+        spack load ifdhc@2.6.20 >/dev/null 2>&1 || \
+            spack load ifdhc >/dev/null 2>&1 || true
+    fi
+fi
+if ! command -v ifdh >/dev/null 2>&1; then
+    common_setup=/cvmfs/fermilab.opensciencegrid.org/products/common/etc/setups.sh
+    if [[ -f "${common_setup}" ]]; then
+        echo "@@ initializing IFDH from Fermilab UPS"
+        set +u
+        # shellcheck disable=SC1090
+        source "${common_setup}" || true
+        if type setup >/dev/null 2>&1; then
+            setup ifdhc || true
+        fi
+        set -u
     fi
 fi
 command -v ifdh >/dev/null 2>&1 || {
